@@ -256,6 +256,11 @@ namespace SymDiffUtils
         {
             return "(" + fst + ", " + snd + ")";
         }
+        public void Deconstruct(out T1 fst, out T2 snd)
+        {
+            fst = this.fst;
+            snd = this.snd;
+        }
     }
 
     //homogeneous tuples

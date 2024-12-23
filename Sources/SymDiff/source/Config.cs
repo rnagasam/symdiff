@@ -121,6 +121,54 @@ namespace SDiff
     }
   }
 
+  public class SpecMap : ProcedureMap
+  {
+    /// Mutual summaries provided by users in config files are stored as strings.
+    /// The <c>MutualSummary</c> class processes these and constructs the actual
+    /// Boogie functions.
+    private Dictionary <HDuple<string>, string> msTextMap;
+
+    public SpecMap() : this("spec") {}
+
+    public SpecMap(string prefix) : base(prefix)
+    {
+      msTextMap = new Dictionary<HDuple<string>, string>();
+    }
+
+    public void AddMutualSummary(string p1, string p2, string ms)
+    {
+      msTextMap.Add(new HDuple<string>(p1,p2), ms);
+    }
+
+    public bool ExistsMutualSummary(string p1, string p2)
+    {
+      return msTextMap.ContainsKey(new HDuple<string>(p1, p2));
+    }
+
+    public string FindMutualSummary(string p1, string p2)
+    {
+      if (msTextMap.TryGetValue(new HDuple<string>(p1, p2), out var ms))
+        return ms;
+      return null;
+    }
+
+    public override string ToString()
+    {
+      string r = "";
+      foreach (var proc in this)
+      {
+        if (proc != null)
+        {
+          var (p1, p2) = proc.fst;
+          var b = ExistsMutualSummary(p1, p2);
+          r += (b ? "spec" : "procedure") + ": " + proc.fst + " / " + proc.snd + "\n";
+          r += b ? "{\n" + FindMutualSummary(p1, p2) + "\n}" : "";
+        }
+      }
+      return r;
+    }
+  }
+
   public class ParamMap : List<HDuple<string>>
   {
     public ParamMap() {}
@@ -198,7 +246,7 @@ namespace SDiff
 
   public class Config
   {
-    public ProcedureMap ProcedureMap { get; }
+    public SpecMap ProcedureMap { get; }
 
     public ProcedureMap FunctionMap { get; }
 
@@ -231,6 +279,8 @@ namespace SDiff
           ParseFunction(l.Substring(10));
         else if (l.StartsWith("procedure:"))
           ParseProcedure(l.Substring(11));
+        else if (l.StartsWith("spec:"))
+          ParseSpec(l.Substring(5), in_s);
         else
           continue;
       }
@@ -240,7 +290,7 @@ namespace SDiff
 
     public Config()
     {
-      ProcedureMap = new ProcedureMap("procedure");
+      ProcedureMap = new SpecMap("procedure");
       FunctionMap = new ProcedureMap("function");
       globalMap = new ParamMap();
       typeMap = new ParamMap();
@@ -256,6 +306,12 @@ namespace SDiff
         Console.WriteLine ("mapping exists but doesn't match, " + mapping.ToString() + " != " + p.ToString());
         throw new ArgumentException($"{mapping.fst.fst} already exists in config.");
       }
+    }
+
+    public void AddProcedureSpec(Duple<HDuple<string>, ParamMap> mapping, string ms)
+    {
+      AddProcedure(mapping);
+      this.ProcedureMap.AddMutualSummary(mapping.fst.fst, mapping.fst.snd, ms);
     }
 
     public void AddFunction(Duple<HDuple<string>, ParamMap> mapping)
@@ -316,26 +372,64 @@ namespace SDiff
       return new ParamMap(fs.Map(x => x.Split(',')).Map(x => HDuple<string>.OfArray(x))).Filter(x => x != null);
     }
 
-    private bool ParseIntoProcedureMap(string l, ProcedureMap map)
+    private HDuple<string> ParseIntoProcedureMap(string l, ProcedureMap map)
     {
       //(n,n)/(n',n');...
       l = l.Replace("(","").Replace(")","").Replace(" ","");
       string[] fs = l.Split('/');
 
-      if (fs == null) return false;
+      if (fs == null) return null;
       string[] ps;
       if (fs.Length == 1)
         ps = new string[0];
       else
         ps = fs[1].Split(';');
 
-      return map.AddFromArray(fs[0].Split(','), ps);
+      string[] rp = fs[0].Split(',');
+      map.AddFromArray(rp, ps);
+
+      return HDuple<string>.OfArray(rp);
     }
 
     private bool ParseProcedure(string l)
     {
       ParseIntoProcedureMap(l, ProcedureMap);
       return false;
+    }
+
+    // Format in config file:
+    // spec: (f1, f2) / params;
+    // {
+    //   mutual summary for (f1, f2)
+    // }
+    public void ParseSpec(string l, StreamReader instream)
+    {
+      // First line contains procedure and parameter names
+      var (f1, f2) = ParseIntoProcedureMap(l, ProcedureMap);
+
+      string StripBraces (string l)
+      {
+        int lskip = l.StartsWith('{') ? 1 : 0;
+        int rskip = lskip + (l.EndsWith('}') ? 1 : 0);
+        int sublen = l.Length - rskip;
+        return l.Substring(lskip, sublen) + Environment.NewLine;
+      }
+
+      var buf = "";
+      do
+      {
+        if (instream.EndOfStream)
+          throw new ConfigParserException("Expected mutual summary after 'spec:' but found EOF instead");
+
+        l = instream.ReadLine().Trim();
+
+        if (buf == "" && l.Length > 0 && !l.StartsWith('{'))
+          throw new ConfigParserException("Expected '{' on a newline after 'spec:' but found '" + l[0] + "' instead");
+
+        buf += l.Length == 0 ? "" : StripBraces(l);
+      } while (!l.EndsWith('}'));
+
+      ProcedureMap.AddMutualSummary(f1, f2, buf.Trim());
     }
 
     private bool ParseFunction(string l)
@@ -347,6 +441,11 @@ namespace SDiff
     public ParamMap FindProcedure(string f1, string f2)
     {
       return ProcedureMap.FindPair(f1, f2);
+    }
+
+    public string FindProvidedMutualSummary(string f1, string f2)
+    {
+      return ProcedureMap.FindMutualSummary(f1, f2);
     }
 
     public ParamMap FindFunction(string f1, string f2)
