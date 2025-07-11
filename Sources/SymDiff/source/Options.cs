@@ -41,7 +41,7 @@ namespace SDiff
 
         // global variables with these strings in their name will be assumed to be modified in procedures with no
         // implementations and no modifies clauses
-        public static List<string> HeapStringIdentifiers = ["heap", "Heap"];
+        public static List<string> HeapStringIdentifiers = []; // ["heap", "Heap"];
 
         //mode where a procedure is inlined when not equal (non-recursive only) [For evaluation of diff inlining]
         public const bool InlineWhenFail = false; //make sure DifferentialInline is turned off

@@ -1878,6 +1878,7 @@ namespace SDiff
             var globalsToAssumeModifiedP1 = p1.GlobalVariables
                 .Where(v => Options.HeapStringIdentifiers.Any(id => v.Name.Contains(id)))
                 .Select(v => new IdentifierExpr(Token.NoToken, v)).ToList();
+            Debug.Assert(globalsToAssumeModifiedP1.Count == 0);
 
             var globalsToAssumeModifiedP2 = new List<IdentifierExpr>();
             if (Options.CustomHeapComparison) {
@@ -1889,6 +1890,7 @@ namespace SDiff
                     .Where(v => Options.HeapStringIdentifiers.Any(id => v.Name.Contains(id)))
                     .Select(v => new IdentifierExpr(Token.NoToken, v)).ToList();
             }
+            Debug.Assert(globalsToAssumeModifiedP2.Count == 0);
 
             foreach (var proc in p1.Procedures)
             {
